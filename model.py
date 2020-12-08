@@ -3,6 +3,32 @@ import torch.nn as nn
 import torch.nn.functional as F
 from layers import *
 
+
+class PositionalEncoding(nn.Module):
+
+    def __init__(self, len_seq, model_dim):
+        super(PositionalEncoding, self).__init__()
+        self.model_dim = model_dim
+        self.register_buffer('PE', self.get_pos_table(len_seq, model_dim))
+
+    def get_pos_table(self, len_seq, dim):
+        N = np.arange(len_seq)
+        D = np.arange(dim)
+
+        def get_angles(pos):
+            angles = pos / np.power(10000, 2 * (D // 2) / self.model_dim)
+            return angles
+
+        pos_table = np.array([get_angles(pos) for pos in N])
+        pos_table[:, 0::2] = np.sin(pos_table[:, 0::2])
+        pos_table[:, 1::2] = np.cos(pos_table[:, 1::2])
+
+        return torch.FloatTensor(pos_table)  # unsqueeze(0) ?
+
+    def forward(self, x):
+        return x + self.PE[:, :x.size(1)].clone().detach()
+
+
 class Transformer(nn.Module):
 
     def __init__(self, src_vocab_sz, tgt_vocab_sz, pad_idx, enc_stack, dec_stack,

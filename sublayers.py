@@ -8,11 +8,17 @@ class SDPAttention(nn.Module):  # Scaled Dot-Product Attention
     def __init__(self):
         super(SDPAttention, self).__init__()
 
-    def forward(self, q, k, v):  # [B, h, len, d_k]
+    def forward(self, q, k, v, mask=None):  # [B, h, len, d_k]
         k_dim = k.size(-1)
 
         attn_weights = torch.matmul(q, k.transpose(2, 3)) / torch.sqrt(k_dim)
+
+        if mask is not None:
+            attn_weights.masked_fill_(mask, -float('inf'))
+
         attn_weights = F.softmax(attn_weights, dim=-1)  # [B, h, len_q, len_v]
+
+
 
         attn = torch.matmul(attn_weights, v)  # [B, h, len_q, d_k]
 

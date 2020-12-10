@@ -9,16 +9,16 @@ class SDPAttention(nn.Module):  # Scaled Dot-Product Attention
         super(SDPAttention, self).__init__()
 
     def forward(self, q, k, v, mask=None):  # [B, h, len, d_k]
+        #q,k,v 모두 pad_idx였던 단어는 d_k축 값 모두 0
+        #mask = [1, 1, 1, len_k]
         k_dim = k.size(-1)
 
-        attn_weights = torch.matmul(q, k.transpose(2, 3)) / torch.sqrt(k_dim)
+        attn_weights = torch.matmul(q, k.transpose(2, 3)) / torch.sqrt(k_dim) # [B, h, len_q, len_k]
 
         if mask is not None:
-            attn_weights.masked_fill_(mask, -float('inf'))
+            attn_weights.masked_fill_(mask.unsqueeze(1), -float('inf'))
 
-        attn_weights = F.softmax(attn_weights, dim=-1)  # [B, h, len_q, len_v]
-
-
+        attn_weights = F.softmax(attn_weights, dim=-1)
 
         attn = torch.matmul(attn_weights, v)  # [B, h, len_q, d_k]
 
@@ -41,13 +41,13 @@ class MultiHeadAttention(nn.Module):
         self.attention = SDPAttention()
         self.layernorm = nn.LayerNorm(model_dim)
 
-    def forward(self, q, k, v):
+    def forward(self, q, k, v, mask=None):
         B, N = q.size(0), q.size(1)
         qs = self.w_qs(q).view(B, N, self.num_head, self.k_dim).transpose(1, 2)  # [B, h, N, d_k]
         ks = self.w_ks(k).view(B, N, self.num_head, self.k_dim).transpose(1, 2)
         vs = self.w_vs(v).view(B, N, self.num_head, self.k_dim).transpose(1, 2)
 
-        attn = self.attention(qs, ks, vs).transpose(1, 2)  # [B, N, h, d_k]
+        attn = self.attention(qs, ks, vs, mask).transpose(1, 2)  # [B, N, h, d_k]
         attn = attn.view(B, N, -1)  # [B, N, h * d_k]
         attn = self.w_os(attn)  # [B, N, model_dim]
 

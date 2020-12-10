@@ -1,11 +1,15 @@
 import os
 import argparse
-
+import torch
+import torch.optim as optim
 from dataset.dataloader import load_data, get_loader
 from dataset.field import Vocab
 from utils import seq2sen
+from model import Transformer
 
 def main(args):
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
     src, tgt = load_data(args.path)
 
     src_vocab = Vocab(init_token='<sos>', eos_token='<eos>', pad_token='<pad>', unk_token='<unk>')
@@ -23,18 +27,40 @@ def main(args):
     src_vocab_size = len(src_vocab)
     tgt_vocab_size = len(tgt_vocab)
 
+    model = Transformer(src_vocab_sz=src_vocab_size, tgt_vocab_sz=tgt_vocab_size,
+                        pad_idx=pad_idx, enc_stack=6, dec_stack=6, max_len=max_length,
+                        model_dim=512, ff_dim=2048, num_head=8).to(device)
+    optimizer = optim.Adam(model.parameters(), betas=(0.9, 0.98), eps=1e-9)
+    criterion = torch.nn.CrossEntropyLoss(ignore_index=pad_idx)
+
     if not args.test:
         train_loader = get_loader(src['train'], tgt['train'], src_vocab, tgt_vocab, batch_size=args.batch_size, shuffle=True)
         valid_loader = get_loader(src['valid'], tgt['valid'], src_vocab, tgt_vocab, batch_size=args.batch_size)
 
         # TODO: train
         for epoch in range(args.epochs):
+            model.train()
             for src_batch, tgt_batch in train_loader:
-                pass
+                optimizer.zero_grad()
+                src_batch, tgt_batch = torch.tensor(src_batch), torch.tensor(tgt_batch)
+                src_batch, tgt_batch = src_batch.to(device), tgt_batch.to(device)
+
+                pred = model(src_batch, tgt_batch)
+
+                loss = criterion(pred, tgt_batch)
+                loss.backward()
+                optimizer.step()
 
             # TODO: validation
-            for src_batch, tgt_batch in valid_loader:
-                pass
+            model.eval()
+            with torch.no_grad():
+                for src_batch, tgt_batch in valid_loader:
+                    src_batch, tgt_batch = src_batch.to(device), tgt_batch.to(device)
+
+                    pred = model(src_batch, tgt_batch)
+                    loss = criterion(pred, tgt_batch)
+                    print(f'val loss: {loss:.3f}')
+
     else:
         # test
         test_loader = get_loader(src['test'], tgt['test'], src_vocab, tgt_vocab, batch_size=args.batch_size)

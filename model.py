@@ -1,8 +1,10 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from masking import *
 from layers import *
 
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 class PositionalEncoding(nn.Module):
 
@@ -23,7 +25,7 @@ class PositionalEncoding(nn.Module):
         pos_table[:, 0::2] = np.sin(pos_table[:, 0::2])
         pos_table[:, 1::2] = np.cos(pos_table[:, 1::2])
 
-        return torch.FloatTensor(pos_table)  # unsqueeze(0) ?
+        return torch.FloatTensor(pos_table, device=device)  # unsqueeze(0) ?
 
     def forward(self, x):
         return x + self.PE[:, :x.size(1)].clone().detach()
@@ -34,17 +36,21 @@ class Transformer(nn.Module):
     def __init__(self, src_vocab_sz, tgt_vocab_sz, pad_idx, enc_stack, dec_stack,
                  max_len, model_dim, ff_dim, num_head):
         super(Transformer, self).__init__()
+        self.pad_idx = pad_idx
         self.encoder = Encoder(src_vocab_sz, pad_idx, enc_stack, max_len, model_dim,
                                ff_dim, num_head)
         self.decoder = Decoder(tgt_vocab_sz, pad_idx, dec_stack, max_len, model_dim, ff_dim, num_head)
         self.fc = nn.Linear(model_dim, tgt_vocab_sz)
 
     def forward(self, src_seq, tgt_seq):
-        enc_output = self.encoder(src_seq)
-        dec_output = self.decoder(enc_output, tgt_seq)
+        src_seq_mask = get_pad_mask(src_seq, self.pad_idx) #[B, 1, len]
+        tgt_seq_mask = get_pad_mask(tgt_seq, self.pad_idx) | get_subsequent_mask(tgt_seq) #[B, len, len]
+
+
+        enc_output = self.encoder(src_seq, src_seq_mask)
+        dec_output = self.decoder(enc_output, tgt_seq, tgt_seq_mask, src_seq_mask)
 
         pred_tgt_seq = self.fc(dec_output)
-        pred_tgt_seq = F.softmax(pred_tgt_seq, dim=-1)
 
         return pred_tgt_seq
 
@@ -57,12 +63,12 @@ class Encoder(nn.Module):
         self.pos_table = PositionalEncoding(max_len, model_dim)
         self.emb_layer = nn.Embedding(src_vocab_sz, model_dim, padding_idx=pad_idx)
 
-    def forward(self, src_seq):
+    def forward(self, src_seq, src_mask=None):
         output = self.emb_layer(src_seq)
         output = self.pos_table(output)
 
         for layer in self.layer_stack:
-            output = layer(output)
+            output = layer(output, src_mask)
 
         return output
 
@@ -76,10 +82,10 @@ class Decoder(nn.Module):
         self.pos_table = PositionalEncoding(max_len, model_dim)
         self.emb_layer = nn.Embedding(tgt_vocab_sz, model_dim, padding_idx=pad_idx)
 
-    def forward(self, enc_output, tgt_seq):
+    def forward(self, enc_output, tgt_seq, slf_attn_mask=None, dec_enc_attn_mask=None):
         dec_output = self.emb_layer(tgt_seq)
 
         for layer in self.layer_stack:
-            dec_output = layer(dec_output, enc_output)
+            dec_output = layer(dec_output, enc_output, slf_attn_mask, dec_enc_attn_mask)
 
         return dec_output

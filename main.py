@@ -6,6 +6,7 @@ from dataset.dataloader import load_data, get_loader
 from dataset.field import Vocab
 from utils import seq2sen
 from model import Transformer
+from tqdm import tqdm
 
 def main(args):
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -37,27 +38,62 @@ def main(args):
         train_loader = get_loader(src['train'], tgt['train'], src_vocab, tgt_vocab, batch_size=args.batch_size, shuffle=True)
         valid_loader = get_loader(src['valid'], tgt['valid'], src_vocab, tgt_vocab, batch_size=args.batch_size)
 
+        train_losses = []
+        val_losses = []
+        best_loss = float('inf')
+
         # TODO: train
         for epoch in range(args.epochs):
             model.train()
-            for src_batch, tgt_batch in train_loader:
+            train_loss = []
+            pbar = tqdm(train_loader)
+            for src_batch, tgt_batch in pbar:
                 optimizer.zero_grad()
-                src_batch, tgt_batch = torch.tensor(src_batch), torch.tensor(tgt_batch)
-                src_batch, tgt_batch = src_batch.to(device), tgt_batch.to(device)
+
+                src_batch = torch.tensor(src_batch).to(device)
+                tgt_batch = torch.tensor(tgt_batch).to(device)
+
                 pred = model(src_batch, tgt_batch)
                 loss = criterion(pred, tgt_batch)
                 loss.backward()
                 optimizer.step()
 
+                pbar.set_description(f'E: {epoch+1:3d} | L: {loss.item():.3f}')
+                train_loss.append(loss.item())
+
+            train_loss = sum(train_loss) / len(train_loss)
+            train_losses.append(train_loss)
+
+
             # TODO: validation
             model.eval()
             with torch.no_grad():
+                val_loss = []
                 for src_batch, tgt_batch in valid_loader:
-                    src_batch, tgt_batch = src_batch.to(device), tgt_batch.to(device)
+                    src_batch = torch.tensor(src_batch).to(device)
+                    tgt_batch = torch.tensor(tgt_batch).to(device)
 
                     pred = model(src_batch, tgt_batch)
                     loss = criterion(pred, tgt_batch)
-                    print(f'val loss: {loss:.3f}')
+
+                    val_loss.append(loss.item())
+
+                val_loss = sum(val_loss) / len(val_loss)
+                val_losses.append(val_loss)
+
+                print(f'-----VL: {val_loss:.3f}-----')
+
+                if best_loss > val_loss:
+                    best_loss = val_loss
+                    torch.save({
+                        'epoch': epoch,
+                        'model_state_dict': model.state_dict(),
+                        'optimizer_state_dict': optimizer.state_dict(),
+                        'loss': best_loss,
+                        'train_losses': train_losses,
+                        'val_losses': val_losses
+                    }, './ckpt/transformer.ckpt')
+
 
     else:
         # test

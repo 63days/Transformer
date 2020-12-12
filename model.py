@@ -54,6 +54,27 @@ class Transformer(nn.Module):
 
         return pred_tgt_seq
 
+    def inference(self, src_seq):
+        B = src_seq.size(0)
+        sos_idx, eos_idx, pad_idx = 0, 1, 2
+        max_len = 50
+
+        tgt_seq = torch.full([B, 50], pad_idx, dtype=torch.long, device=device)
+        tgt_seq[:, 0] = sos_idx
+
+        src_seq_mask = get_pad_mask(src_seq, self.pad_idx)
+
+        enc_output = self.encoder(src_seq, src_seq_mask)
+
+        for i in range(2, max_len): #TODO: changes to beam search
+            tgt_seq_mask = get_subsequent_mask(tgt_seq[:, :i])
+            dec_output = self.decoder(enc_output, tgt_seq[:, :i], tgt_seq_mask, src_seq_mask)
+            pred_tgt_seq = self.fc(dec_output) #[B, len_tgt, vocab_sz]
+            tgt_seq[:, i-1] = torch.argmax(pred_tgt_seq[:, -1, :], dim=-1)
+
+        return tgt_seq
+
+
 class Encoder(nn.Module):
 
     def __init__(self, src_vocab_sz, pad_idx, num_stack, max_len, model_dim, ff_dim, num_head):

@@ -9,4 +9,4 @@ def get_subsequent_mask(seq):
     len_seq = seq.size(-1)
     mask = torch.triu(torch.ones((len_seq, len_seq), device=device), diagonal=1).bool()
 
-    return mask
+    return mask.unsqueeze(0)

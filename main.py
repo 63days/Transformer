@@ -97,20 +97,27 @@ def main(args):
 
     else:
         # test
+        load_state = torch.load('./ckpt/transformer.ckpt', map_location=device)
+        model.load_state_dict(load_state['model_state_dict'])
+        model.eval()
         test_loader = get_loader(src['test'], tgt['test'], src_vocab, tgt_vocab, batch_size=args.batch_size)
 
         pred = []
         for src_batch, tgt_batch in test_loader:
             # TODO: predict pred_batch from src_batch with your model.
-            pred_batch = tgt_batch
-
+            src_batch = torch.tensor(src_batch).to(device)
+            pred_batch = model.inference(src_batch)
+            print(pred_batch)
+            pred_batch = pred_batch.tolist()
             # every sentences in pred_batch should start with <sos> token (index: 0) and end with <eos> token (index: 1).
             # every <pad> token (index: 2) should be located after <eos> token (index: 1).
             # example of pred_batch:
             # [[0, 5, 6, 7, 1],
             #  [0, 4, 9, 1, 2],
             #  [0, 6, 1, 2, 2]]
-            pred += seq2sen(pred_batch, tgt_vocab)
+            p = seq2sen(pred_batch, tgt_vocab)
+            print(p)
+            pred += p
 
         with open('results/pred.txt', 'w') as f:
             for line in pred:

@@ -25,7 +25,7 @@ class PositionalEncoding(nn.Module):
         pos_table[:, 0::2] = np.sin(pos_table[:, 0::2])
         pos_table[:, 1::2] = np.cos(pos_table[:, 1::2])
 
-        return torch.FloatTensor(pos_table, device=device)  # unsqueeze(0) ?
+        return torch.FloatTensor(pos_table)  # unsqueeze(0) ?
 
     def forward(self, x):
         #TODO: Fix it

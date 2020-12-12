@@ -70,7 +70,7 @@ class Transformer(nn.Module):
             tgt_seq_mask = get_subsequent_mask(tgt_seq[:, :i])
             dec_output = self.decoder(enc_output, tgt_seq[:, :i], tgt_seq_mask, src_seq_mask)
             pred_tgt_seq = self.fc(dec_output) #[B, len_tgt, vocab_sz]
-            tgt_seq[:, i-1] = torch.argmax(pred_tgt_seq[:, -1, :], dim=-1)
+            tgt_seq[:, i-1] = torch.argmax(pred_tgt_seq[:, i-1, :], dim=-1)
 
         return tgt_seq
 

@@ -106,6 +106,7 @@ def main(args):
         for src_batch, tgt_batch in test_loader:
             # TODO: predict pred_batch from src_batch with your model.
             src_batch = torch.tensor(src_batch).to(device)
+            tgt_batch = torch.tensor(tgt_batch).to(device)
             pred_batch = model.inference(src_batch)
             print(pred_batch)
             pred_batch = pred_batch.tolist()

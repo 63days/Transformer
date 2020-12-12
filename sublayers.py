@@ -13,7 +13,7 @@ class SDPAttention(nn.Module):  # Scaled Dot-Product Attention
         #mask = [1, 1, 1, len_k]
         k_dim = k.size(-1)
 
-        attn_weights = torch.matmul(q, k.transpose(2, 3)) / torch.sqrt(k_dim) # [B, h, len_q, len_k]
+        attn_weights = torch.matmul(q, k.transpose(2, 3)) / (k_dim ** 0.5) # [B, h, len_q, len_k]
 
         if mask is not None:
             attn_weights.masked_fill_(mask.unsqueeze(1), -float('inf'))
@@ -42,13 +42,13 @@ class MultiHeadAttention(nn.Module):
         self.layernorm = nn.LayerNorm(model_dim)
 
     def forward(self, q, k, v, mask=None):
-        B, N = q.size(0), q.size(1)
-        qs = self.w_qs(q).view(B, N, self.num_head, self.k_dim).transpose(1, 2)  # [B, h, N, d_k]
-        ks = self.w_ks(k).view(B, N, self.num_head, self.k_dim).transpose(1, 2)
-        vs = self.w_vs(v).view(B, N, self.num_head, self.k_dim).transpose(1, 2)
+        B, len_q, len_k = q.size(0), q.size(1), k.size(1)
+        qs = self.w_qs(q).view(B, len_q, self.num_head, self.k_dim).transpose(1, 2)  # [B, h, N, d_k]
+        ks = self.w_ks(k).view(B, len_k, self.num_head, self.k_dim).transpose(1, 2)
+        vs = self.w_vs(v).view(B, len_k, self.num_head, self.k_dim).transpose(1, 2)
 
         attn = self.attention(qs, ks, vs, mask).transpose(1, 2)  # [B, N, h, d_k]
-        attn = attn.view(B, N, -1)  # [B, N, h * d_k]
+        attn = attn.reshape(B, len_q, -1)  # [B, N, h * d_k]
         attn = self.w_os(attn)  # [B, N, model_dim]
 
         attn = attn + q

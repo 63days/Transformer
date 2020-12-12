@@ -28,7 +28,7 @@ class DecoderLayer(nn.Module):
 
     def forward(self, dec_input, enc_output, slf_attn_mask=None, dec_enc_attn_mask=None):
         output = self.attn_layer1(dec_input, dec_input, dec_input, slf_attn_mask)
-        output = self.attn_layer2(enc_output, enc_output, output, dec_enc_attn_mask)
+        output = self.attn_layer2(output, enc_output, enc_output, dec_enc_attn_mask)
         output = self.ff_layer(output)
 
         return output

@@ -28,7 +28,8 @@ class PositionalEncoding(nn.Module):
         return torch.FloatTensor(pos_table, device=device)  # unsqueeze(0) ?
 
     def forward(self, x):
-        return x + self.PE[:, :x.size(1)].clone().detach()
+        #TODO: Fix it
+        return x + self.PE[:x.size(-2), :x.size(-1)].clone().detach()
 
 
 class Transformer(nn.Module):
@@ -43,14 +44,13 @@ class Transformer(nn.Module):
         self.fc = nn.Linear(model_dim, tgt_vocab_sz)
 
     def forward(self, src_seq, tgt_seq):
-        src_seq_mask = get_pad_mask(src_seq, self.pad_idx) #[B, 1, len]
-        tgt_seq_mask = get_pad_mask(tgt_seq, self.pad_idx) | get_subsequent_mask(tgt_seq) #[B, len, len]
-
+        src_seq_mask = get_pad_mask(src_seq, self.pad_idx) # [B, 1, len_src]
+        tgt_seq_mask = get_pad_mask(tgt_seq, self.pad_idx) | get_subsequent_mask(tgt_seq) # [B, len_tgt, len_tgt]
 
         enc_output = self.encoder(src_seq, src_seq_mask)
         dec_output = self.decoder(enc_output, tgt_seq, tgt_seq_mask, src_seq_mask)
 
-        pred_tgt_seq = self.fc(dec_output)
+        pred_tgt_seq = self.fc(dec_output).transpose(1, 2)
 
         return pred_tgt_seq
 

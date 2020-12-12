@@ -44,9 +44,7 @@ def main(args):
                 optimizer.zero_grad()
                 src_batch, tgt_batch = torch.tensor(src_batch), torch.tensor(tgt_batch)
                 src_batch, tgt_batch = src_batch.to(device), tgt_batch.to(device)
-
                 pred = model(src_batch, tgt_batch)
-
                 loss = criterion(pred, tgt_batch)
                 loss.backward()
                 optimizer.step()

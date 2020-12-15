@@ -39,14 +39,16 @@ class Transformer(nn.Module):
         super(Transformer, self).__init__()
         self.pad_idx = pad_idx
         self.model_dim = model_dim
-        self.optimizer = optim.Adam(self.parameters(), betas=(0.9, 0.98), eps=1e-9)
-        self.criterion = nn.CrossEntropyLoss(ignore_index=pad_idx)
-        self.step = 1
-        self.warmup_steps = 4000
+
         self.encoder = Encoder(src_vocab_sz, pad_idx, enc_stack, max_len, model_dim,
                                ff_dim, num_head)
         self.decoder = Decoder(tgt_vocab_sz, pad_idx, dec_stack, max_len, model_dim, ff_dim, num_head)
         self.fc = nn.Linear(model_dim, tgt_vocab_sz)
+
+        self.optimizer = optim.Adam(self.parameters(), lr=0, betas=(0.9, 0.98), eps=1e-9)
+        self.criterion = nn.CrossEntropyLoss(ignore_index=pad_idx)
+        self.step = 1
+        self.warmup_steps = 4000
 
     def forward(self, src_seq, tgt_seq):
         src_seq_mask = get_pad_mask(src_seq, self.pad_idx) # [B, 1, len_src]

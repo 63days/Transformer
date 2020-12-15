@@ -38,9 +38,11 @@ class Transformer(nn.Module):
                  max_len, model_dim, ff_dim, num_head):
         super(Transformer, self).__init__()
         self.pad_idx = pad_idx
+        self.model_dim = model_dim
         self.optimizer = optim.Adam(self.parameters(), betas=(0.9, 0.98), eps=1e-9)
         self.criterion = nn.CrossEntropyLoss(ignore_index=pad_idx)
-
+        self.step = 1
+        self.warmup_steps = 4000
         self.encoder = Encoder(src_vocab_sz, pad_idx, enc_stack, max_len, model_dim,
                                ff_dim, num_head)
         self.decoder = Decoder(tgt_vocab_sz, pad_idx, dec_stack, max_len, model_dim, ff_dim, num_head)
@@ -63,9 +65,17 @@ class Transformer(nn.Module):
 
         pred = self.forward(src_batch, tgt_batch[:, :-1])
         loss = self.criterion(pred.reshape(-1, pred.size(-1)), tgt_batch[:, 1:].reshape(-1))
+
+        ####### lr scheduler ########
+        lr = (self.model_dim ** -0.5) * min(self.step ** -0.5, self.step * self.warmup_steps ** -1.5)
+        for group in self.optimizer.param_groups:
+            group['lr'] = lr
+        #############################
+
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
+        self.step += 1
 
         return loss.item()
 

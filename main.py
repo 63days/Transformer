@@ -30,7 +30,7 @@ def main(args):
 
     model = Transformer(src_vocab_sz=src_vocab_size, tgt_vocab_sz=tgt_vocab_size,
                         pad_idx=pad_idx, enc_stack=6, dec_stack=6, max_len=max_length,
-                        model_dim=512, ff_dim=2048, num_head=8)
+                        model_dim=512, ff_dim=2048, num_head=8).to(device)
 
 
     if not args.test:

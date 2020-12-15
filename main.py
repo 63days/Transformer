@@ -76,6 +76,15 @@ def main(args):
                     pred = model(src_batch, tgt_batch)
                     loss = criterion(pred, tgt_batch)
 
+                    #######TESTING###########
+                    pred=torch.argmax(pred.transpose(1, 2), dim=-1)
+                    tgt=tgt_batch[0].unsqueeze(0).tolist()
+                    pred=pred[0].unsqueeze(0).tolist()
+                    pred[-1]=1
+                    print('tgt:', seq2sen(tgt, tgt_vocab))
+                    print('pred:', seq2sen(pred, tgt_vocab))
+                    #########################
+
                     val_loss.append(loss.item())
 
                 val_loss = sum(val_loss) / len(val_loss)

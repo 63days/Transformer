@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torch.optim as optim
 from masking import *
 from layers import *
 
@@ -28,8 +29,7 @@ class PositionalEncoding(nn.Module):
         return torch.FloatTensor(pos_table)  # unsqueeze(0) ?
 
     def forward(self, x):
-        #TODO: Fix it
-        return x + self.PE[:x.size(-2), :x.size(-1)].clone().detach()
+        return x + self.PE[:x.size(-2), :].clone().detach()
 
 
 class Transformer(nn.Module):
@@ -38,6 +38,9 @@ class Transformer(nn.Module):
                  max_len, model_dim, ff_dim, num_head):
         super(Transformer, self).__init__()
         self.pad_idx = pad_idx
+        self.optimizer = optim.Adam(self.parameters(), betas=(0.9, 0.98), eps=1e-9)
+        self.criterion = nn.CrossEntropyLoss(ignore_index=pad_idx)
+
         self.encoder = Encoder(src_vocab_sz, pad_idx, enc_stack, max_len, model_dim,
                                ff_dim, num_head)
         self.decoder = Decoder(tgt_vocab_sz, pad_idx, dec_stack, max_len, model_dim, ff_dim, num_head)
@@ -50,29 +53,40 @@ class Transformer(nn.Module):
         enc_output = self.encoder(src_seq, src_seq_mask)
         dec_output = self.decoder(enc_output, tgt_seq, tgt_seq_mask, src_seq_mask)
 
-        pred_tgt_seq = self.fc(dec_output).transpose(1, 2)
+        pred_tgt_seq = self.fc(dec_output)
 
         return pred_tgt_seq
 
-    def inference(self, src_seq):
-        B = src_seq.size(0)
-        sos_idx, eos_idx, pad_idx = 0, 1, 2
-        max_len = 50
+    def train_batch(self, src_batch, tgt_batch):
+        src_batch = torch.LongTensor(src_batch).to(device)
+        tgt_batch = torch.LongTensor(tgt_batch).to(device)
 
-        tgt_seq = torch.full([B, 50], pad_idx, dtype=torch.long, device=device)
-        tgt_seq[:, 0] = sos_idx
+        pred = self.forward(src_batch, tgt_batch[:, :-1])
+        loss = self.criterion(pred.reshape(-1, pred.size(-1)), tgt_batch[:, 1:].reshape(-1))
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
 
-        src_seq_mask = get_pad_mask(src_seq, self.pad_idx)
+        return loss.item()
 
-        enc_output = self.encoder(src_seq, src_seq_mask)
+    def validation_batch(self, src_batch, tgt_batch):
+        src_batch = torch.LongTensor(src_batch).to(device)
+        tgt_batch = torch.LongTensor(tgt_batch).to(device)
 
-        for i in range(2, max_len): #TODO: changes to beam search
-            tgt_seq_mask = get_subsequent_mask(tgt_seq[:, :i])
-            dec_output = self.decoder(enc_output, tgt_seq[:, :i], tgt_seq_mask, src_seq_mask)
-            pred_tgt_seq = self.fc(dec_output) #[B, len_tgt, vocab_sz]
-            tgt_seq[:, i-1] = torch.argmax(pred_tgt_seq[:, i-1, :], dim=-1)
+        pred = self.forward(src_batch, tgt_batch[:, :-1])
+        loss = self.criterion(pred.reshape(-1, pred.size(-1)), tgt_batch[:, 1:].reshape(-1))
 
-        return tgt_seq
+        return loss.item()
+
+    def save(self, epoch, best_loss, train_losses, val_losses):
+        torch.save({
+            'epoch': epoch,
+            'model_state_dict': self.state_dict(),
+            'optimizer_state_dict': self.optimizer.state_dict(),
+            'loss': best_loss,
+            'train_losses': train_losses,
+            'val_losses': val_losses
+        }, './ckpt/transformer.ckpt')
 
 
 class Encoder(nn.Module):

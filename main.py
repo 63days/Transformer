@@ -31,8 +31,7 @@ def main(args):
     model = Transformer(src_vocab_sz=src_vocab_size, tgt_vocab_sz=tgt_vocab_size,
                         pad_idx=pad_idx, enc_stack=6, dec_stack=6, max_len=max_length,
                         model_dim=512, ff_dim=2048, num_head=8).to(device)
-    optimizer = optim.Adam(model.parameters(), betas=(0.9, 0.98), eps=1e-9)
-    criterion = torch.nn.CrossEntropyLoss(ignore_index=pad_idx)
+
 
     if not args.test:
         train_loader = get_loader(src['train'], tgt['train'], src_vocab, tgt_vocab, batch_size=args.batch_size, shuffle=True)
@@ -48,18 +47,10 @@ def main(args):
             train_loss = []
             pbar = tqdm(train_loader)
             for src_batch, tgt_batch in pbar:
-                optimizer.zero_grad()
+                loss = model.train_batch(src_batch, tgt_batch)
 
-                src_batch = torch.tensor(src_batch).to(device)
-                tgt_batch = torch.tensor(tgt_batch).to(device)
-
-                pred = model(src_batch, tgt_batch)
-                loss = criterion(pred, tgt_batch)
-                loss.backward()
-                optimizer.step()
-
-                pbar.set_description(f'E: {epoch+1:3d} | L: {loss.item():.3f}')
-                train_loss.append(loss.item())
+                pbar.set_description(f'E: {epoch+1:3d} | L: {loss:.3f}')
+                train_loss.append(loss)
 
             train_loss = sum(train_loss) / len(train_loss)
             train_losses.append(train_loss)
@@ -70,22 +61,9 @@ def main(args):
             with torch.no_grad():
                 val_loss = []
                 for src_batch, tgt_batch in valid_loader:
-                    src_batch = torch.tensor(src_batch).to(device)
-                    tgt_batch = torch.tensor(tgt_batch).to(device)
+                    model.validation_batch(src_batch, tgt_batch)
 
-                    pred = model(src_batch, tgt_batch)
-                    loss = criterion(pred, tgt_batch)
-
-                    #######TESTING###########
-                    pred=torch.argmax(pred.transpose(1, 2), dim=-1)
-                    tgt=tgt_batch[0].unsqueeze(0).tolist()
-                    pred=pred[0].unsqueeze(0).tolist()
-                    pred[-1]=1
-                    print('tgt:', seq2sen(tgt, tgt_vocab))
-                    print('pred:', seq2sen(pred, tgt_vocab))
-                    #########################
-
-                    val_loss.append(loss.item())
+                    val_loss.append(loss)
 
                 val_loss = sum(val_loss) / len(val_loss)
                 val_losses.append(val_loss)
@@ -94,14 +72,8 @@ def main(args):
 
                 if best_loss > val_loss:
                     best_loss = val_loss
-                    torch.save({
-                        'epoch': epoch,
-                        'model_state_dict': model.state_dict(),
-                        'optimizer_state_dict': optimizer.state_dict(),
-                        'loss': best_loss,
-                        'train_losses': train_losses,
-                        'val_losses': val_losses
-                    }, './ckpt/transformer.ckpt')
+                    model.save(epoch, best_loss, train_losses, val_losses)
+
 
 
     else:

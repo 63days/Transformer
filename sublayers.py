@@ -43,9 +43,9 @@ class MultiHeadAttention(nn.Module):
 
     def forward(self, q, k, v, mask=None):
         B, len_q, len_k = q.size(0), q.size(1), k.size(1)
-        qs = self.w_qs(q).view(B, len_q, self.num_head, self.k_dim).transpose(1, 2)  # [B, h, N, d_k]
-        ks = self.w_ks(k).view(B, len_k, self.num_head, self.k_dim).transpose(1, 2)
-        vs = self.w_vs(v).view(B, len_k, self.num_head, self.k_dim).transpose(1, 2)
+        qs = self.w_qs(q).reshape(B, len_q, self.num_head, self.k_dim).transpose(1, 2)  # [B, h, N, d_k]
+        ks = self.w_ks(k).reshape(B, len_k, self.num_head, self.k_dim).transpose(1, 2)
+        vs = self.w_vs(v).reshape(B, len_k, self.num_head, self.k_dim).transpose(1, 2)
 
         attn = self.attention(qs, ks, vs, mask).transpose(1, 2)  # [B, N, h, d_k]
         attn = attn.reshape(B, len_q, -1)  # [B, N, h * d_k]

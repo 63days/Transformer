@@ -34,8 +34,8 @@ class PositionalEncoding(nn.Module):
 
 class Transformer(nn.Module):
 
-    def __init__(self, src_vocab_sz, tgt_vocab_sz, pad_idx, enc_stack, dec_stack,
-                 max_len, model_dim, ff_dim, num_head):
+    def __init__(self, src_vocab_sz, tgt_vocab_sz, pad_idx=2, enc_stack=6, dec_stack=6,
+                 max_len=50, model_dim=512, ff_dim=2048, num_head=8):
         super(Transformer, self).__init__()
         self.pad_idx = pad_idx
         self.model_dim = model_dim
@@ -90,6 +90,30 @@ class Transformer(nn.Module):
 
         return loss.item()
 
+    def inference(self, src_batch, tgt_batch):
+        src_batch = torch.LongTensor(src_batch).to(device)
+        src_mask = get_pad_mask(src_batch, self.pad_idx)
+
+        gold = torch.LongTensor(tgt_batch).to(device)
+        max_len = gold.size(1)
+
+        tgt_batch = torch.full(gold.size(), self.pad_idx, dtype=torch.long, device=device)
+        tgt_batch[:, 0] = 0 # sos_idx = 0
+
+        enc_output = self.encoder(src_batch, src_mask)
+        for i in range(1, max_len):
+            tgt_mask = get_pad_mask(tgt_batch[:, :i], self.pad_idx) | get_subsequent_mask(tgt_batch[:, :i])
+
+            dec_output = self.decoder(enc_output, tgt_batch[:, :i], tgt_mask, src_mask)
+
+            pred = self.fc(dec_output)
+            pred = torch.argmax(pred, dim=-1)
+            tgt_batch[:, i] = pred[:, i-1]
+
+        tgt_batch[:, -1]=1
+        return tgt_batch
+
+
     def save(self, epoch, best_loss, train_losses, val_losses):
         torch.save({
             'epoch': epoch,
@@ -99,6 +123,13 @@ class Transformer(nn.Module):
             'train_losses': train_losses,
             'val_losses': val_losses
         }, './ckpt/transformer.ckpt')
+
+    def load(self, path):
+        load_state = torch.load(path, map_location=device)
+
+        self.load_state_dict(load_state['model_state_dict'])
+
+        return load_state
 
 
 class Encoder(nn.Module):

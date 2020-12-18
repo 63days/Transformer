@@ -34,10 +34,15 @@ class PositionalEncoding(nn.Module):
 
 class Transformer(nn.Module):
 
-    def __init__(self, src_vocab_sz, tgt_vocab_sz, pad_idx=2, enc_stack=6, dec_stack=6,
-                 max_len=50, model_dim=512, ff_dim=2048, num_head=8):
+    def __init__(self, src_vocab_sz, tgt_vocab_sz, sos_idx=0, eos_idx=1, pad_idx=2,
+                 enc_stack=6, dec_stack=6, max_len=50, model_dim=512, ff_dim=2048, num_head=8):
         super(Transformer, self).__init__()
+        self.src_vocab_sz = src_vocab_sz
+        self.tgt_vocab_sz = tgt_vocab_sz
+        self.sos_idx = sos_idx
+        self.eos_idx = eos_idx
         self.pad_idx = pad_idx
+        self.max_len = max_len
         self.model_dim = model_dim
 
         self.encoder = Encoder(src_vocab_sz, pad_idx, enc_stack, max_len, model_dim,
@@ -90,28 +95,45 @@ class Transformer(nn.Module):
 
         return loss.item()
 
-    def inference(self, src_batch, tgt_batch):
+    def inference(self, src_batch, k=5):
         src_batch = torch.LongTensor(src_batch).to(device)
         src_mask = get_pad_mask(src_batch, self.pad_idx)
-
-        gold = torch.LongTensor(tgt_batch).to(device)
-        max_len = gold.size(1)
-
-        tgt_batch = torch.full(gold.size(), self.pad_idx, dtype=torch.long, device=device)
-        tgt_batch[:, 0] = 0 # sos_idx = 0
+        B = src_batch.size(0)
 
         enc_output = self.encoder(src_batch, src_mask)
-        for i in range(1, max_len):
-            tgt_mask = get_pad_mask(tgt_batch[:, :i], self.pad_idx) | get_subsequent_mask(tgt_batch[:, :i])
+        enc_output = enc_output.repeat_interleave(k, dim=0) #[B*k, N, D]
+        src_mask = src_mask.repeat_interleave(k, dim=0)
+        tgt_batch = torch.full([B, k, 1], self.sos_idx, dtype=torch.long, device=device)
+        probs = torch.ones([B, k], dtype=torch.long, device=device)
 
-            dec_output = self.decoder(enc_output, tgt_batch[:, :i], tgt_mask, src_mask)
+        for i in range(1, self.max_len):
+            tgt_batch = tgt_batch.reshape(B * k, -1)
+            tgt_mask = get_pad_mask(tgt_batch, self.pad_idx) | get_subsequent_mask(tgt_batch)
+            dec_output = self.decoder(enc_output, tgt_batch, tgt_mask, src_mask)
 
-            pred = self.fc(dec_output)
-            pred = torch.argmax(pred, dim=-1)
-            tgt_batch[:, i] = pred[:, i-1]
+            pr = self.fc(dec_output)[:,-1] #[B*k, vocab_size]
+            pr = F.softmax(pr, dim=-1)
+            pr = pr.reshape(B, k, -1)
 
-        tgt_batch[:, -1]=1
-        return tgt_batch
+            pr = probs.unsqueeze(2) * pr
+            pr = pr.reshape(B, -1)
+
+            probs, indices = torch.topk(pr, k) # probs, indices = [B, k]
+
+            beam_indices = indices // self.tgt_vocab_sz
+            beam_indices = beam_indices.unsqueeze(2).repeat_interleave(i, dim=2)
+            word_indices = indices % self.tgt_vocab_sz
+
+            tgt_batch = tgt_batch.reshape(B, k, -1)
+            tgt_batch = torch.gather(tgt_batch, 1, beam_indices)
+            new_col = word_indices.unsqueeze(2)
+            tgt_batch = torch.cat([tgt_batch, new_col], dim=2)
+
+        best_idx = torch.argmax(probs, dim=1)
+        tgt_batch = tgt_batch[torch.arange(B), best_idx]
+        tgt_batch = F.pad(tgt_batch, [0, 1], value=self.eos_idx) #[add eos_idx]
+
+        return tgt_batch.cpu().tolist()
 
 
     def save(self, epoch, best_loss, train_losses, val_losses):

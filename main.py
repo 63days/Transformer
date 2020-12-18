@@ -4,9 +4,10 @@ import torch
 import torch.optim as optim
 from dataset.dataloader import load_data, get_loader
 from dataset.field import Vocab
-from utils import seq2sen
+from utils import seq2sen, seq2token
 from model import Transformer
 from tqdm import tqdm
+from nltk.translate.bleu_score import sentence_bleu
 
 def main(args):
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -29,7 +30,8 @@ def main(args):
     tgt_vocab_size = len(tgt_vocab)
 
     model = Transformer(src_vocab_sz=src_vocab_size, tgt_vocab_sz=tgt_vocab_size,
-                        pad_idx=pad_idx, enc_stack=6, dec_stack=6, max_len=max_length,
+                        sos_idx=sos_idx, eos_idx=eos_idx, pad_idx=pad_idx,
+                        enc_stack=6, dec_stack=6, max_len=max_length,
                         model_dim=512, ff_dim=2048, num_head=8).to(device)
 
 
@@ -84,19 +86,27 @@ def main(args):
         test_loader = get_loader(src['test'], tgt['test'], src_vocab, tgt_vocab, batch_size=args.batch_size)
 
         pred = []
+        gold = []
         for src_batch, tgt_batch in test_loader:
             # TODO: predict pred_batch from src_batch with your model.
-            pred_batch = model.inference(src_batch, tgt_batch)
-            pred_batch = pred_batch.tolist()
+            pred_batch = model.inference(src_batch, 5)
+
             # every sentences in pred_batch should start with <sos> token (index: 0) and end with <eos> token (index: 1).
             # every <pad> token (index: 2) should be located after <eos> token (index: 1).
             # example of pred_batch:
             # [[0, 5, 6, 7, 1],
             #  [0, 4, 9, 1, 2],
             #  [0, 6, 1, 2, 2]]
-            p = seq2sen(pred_batch, tgt_vocab)
-            print(p)
+
+            p = seq2token(pred_batch, tgt_vocab)
+            g = seq2token(tgt_batch, tgt_vocab)
             pred += p
+            gold += g
+            print(p)
+
+
+        bleu_score = sentence_bleu(gold, pred)
+        print(f'BLEU SCORE: {bleu_score}')
 
         with open('results/pred.txt', 'w') as f:
             for line in pred:
